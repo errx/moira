@@ -9,22 +9,28 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/moira-alert/moira"
 	gomail "gopkg.in/gomail.v2"
 )
 
-// Sender implements moira sender interface via pushover
+// Config
+type Config struct {
+	From                   string `mapstructure:"mail_from"`
+	SMTPHost               string `mapstructure:"smtp_host"`
+	SMTPPort               int  `mapstructure:"smtp_port"`
+	InsecureTLS            bool   `mapstructure:"insecure_tls"`
+	Password               string `mapstructure:"smtp_pass"`
+	Username               string `mapstructure:"smtp_user"`
+	TemplateFile           string `mapstructure:"template_file"`
+	moira.SenderBaseConfig `mapstructure:",squash"`
+}
+
+// Sender implements moira sender interface via email
 type Sender struct {
-	From         string
-	SMTPhost     string
-	SMTPport     int64
-	FrontURI     string
-	InsecureTLS  bool
-	Password     string
-	Username     string
-	TemplateFile string
-	log          moira.Logger
-	Template     *template.Template
+	config   *Config
+	log      moira.Logger
+	template *template.Template
 }
 
 type templateRow struct {
@@ -39,46 +45,48 @@ type templateRow struct {
 }
 
 // Init read yaml config
-func (sender *Sender) Init(senderSettings map[string]string, logger moira.Logger) error {
-	sender.setLogger(logger)
-	sender.From = senderSettings["mail_from"]
-	sender.SMTPhost = senderSettings["smtp_host"]
-	sender.SMTPport, _ = strconv.ParseInt(senderSettings["smtp_port"], 10, 64)
-	sender.InsecureTLS, _ = strconv.ParseBool(senderSettings["insecure_tls"])
-	sender.FrontURI = senderSettings["front_uri"]
-	sender.Password = senderSettings["smtp_pass"]
-	sender.Username = senderSettings["smtp_user"]
-	sender.TemplateFile = senderSettings["template_file"]
-
-	if sender.Username == "" {
-		sender.Username = sender.From
+func (sender *Sender) Init(senderSettings interface{}, logger moira.Logger) error {
+	sender.log = logger
+	if err := mapstructure.Decode(senderSettings, sender.config); err != nil {
+		return err
 	}
-	if sender.From == "" {
+
+	if sender.config.Username == "" {
+		sender.config.Username = sender.config.From
+	}
+	if sender.config.From == "" {
 		return fmt.Errorf("mail_from can't be empty")
 	}
 
-	if sender.TemplateFile == "" {
-		sender.Template = template.Must(template.New("mail").Parse(defaultTemplate))
+	if sender.config.TemplateFile == "" {
+		sender.template = template.Must(template.New("mail").Parse(defaultTemplate))
 	} else {
 		var err error
-		if sender.Template, err = template.New("mail").ParseFiles(sender.TemplateFile); err != nil {
+		if sender.template, err = template.New("mail").ParseFiles(sender.config.TemplateFile); err != nil {
 			return err
 		}
 	}
-
-	t, err := smtp.Dial(fmt.Sprintf("%s:%d", sender.SMTPhost, sender.SMTPport))
+	// Test connection
+	t, err := smtp.Dial(fmt.Sprintf("%s:%d", sender.config.SMTPHost, sender.config.SMTPPort))
 	if err != nil {
 		return err
 	}
 	defer t.Close()
-	if sender.Password != "" {
-		if err := t.StartTLS(&tls.Config{
-			InsecureSkipVerify: sender.InsecureTLS,
-			ServerName:         sender.SMTPhost,
-		}); err != nil {
-			return err
-		}
-		if err := t.Auth(smtp.PlainAuth("", sender.Username, sender.Password, sender.SMTPhost)); err != nil {
+	// Test TLS handshake
+	if err := t.StartTLS(&tls.Config{
+		InsecureSkipVerify: sender.config.InsecureTLS,
+		ServerName:         sender.config.SMTPHost,
+	}); err != nil {
+		return err
+	}
+	// Test authentication
+	if sender.config.Password != "" {
+		if err := t.Auth(smtp.PlainAuth(
+			"",
+			sender.config.Username,
+			sender.config.Password,
+			sender.config.SMTPHost,
+		)); err != nil {
 			return err
 		}
 	}
@@ -91,18 +99,21 @@ func (sender *Sender) SendEvents(events moira.NotificationEvents, contact moira.
 	m := sender.makeMessage(events, contact, trigger, throttled)
 
 	d := gomail.Dialer{
-		Host: sender.SMTPhost,
-		Port: int(sender.SMTPport),
+		Host: sender.config.SMTPHost,
+		Port: sender.config.SMTPPort,
 		TLSConfig: &tls.Config{
-			InsecureSkipVerify: sender.InsecureTLS,
-			ServerName:         sender.SMTPhost,
+			InsecureSkipVerify: sender.config.InsecureTLS,
+			ServerName:         sender.config.SMTPHost,
 		},
 	}
 
-	if sender.Password != "" {
-		d.Auth = smtp.PlainAuth("", sender.Username, sender.Password, sender.SMTPhost)
+	if sender.config.Password != "" {
+		d.Auth = smtp.PlainAuth(
+			"", 
+			sender.config.Username, 
+			sender.config.Password, 
+			sender.config.SMTPHost)
 	}
-
 	if err := d.DialAndSend(m); err != nil {
 		return err
 	}
@@ -121,7 +132,7 @@ func (sender *Sender) makeMessage(events moira.NotificationEvents, contact moira
 		Throttled   bool
 		Items       []*templateRow
 	}{
-		Link:        fmt.Sprintf("%s/#/events/%s", sender.FrontURI, events[0].TriggerID),
+		Link:        fmt.Sprintf("%s/#/events/%s", sender.config.FrontURI, events[0].TriggerID),
 		Description: trigger.Desc,
 		Throttled:   throttled,
 		Items:       make([]*templateRow, 0, len(events)),
@@ -141,16 +152,12 @@ func (sender *Sender) makeMessage(events moira.NotificationEvents, contact moira
 	}
 
 	m := gomail.NewMessage()
-	m.SetHeader("From", sender.From)
+	m.SetHeader("From", sender.config.From)
 	m.SetHeader("To", contact.Value)
 	m.SetHeader("Subject", subject)
 	m.AddAlternativeWriter("text/html", func(w io.Writer) error {
-		return sender.Template.Execute(w, templateData)
+		return sender.template.Execute(w, templateData)
 	})
 
 	return m
-}
-
-func (sender *Sender) setLogger(logger moira.Logger) {
-	sender.log = logger
 }

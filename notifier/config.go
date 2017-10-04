@@ -7,7 +7,7 @@ type Config struct {
 	Enabled          bool
 	SendingTimeout   time.Duration
 	ResendingTimeout time.Duration
-	Senders          []map[string]string
+	Senders          []interface{}
 	LogFile          string
 	LogLevel         string
 	FrontURL         string

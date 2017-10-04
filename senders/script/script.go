@@ -8,13 +8,19 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/moira-alert/moira"
 )
 
+type Config struct {
+	Exec                   string `mapstructure:"exec"`
+	moira.SenderBaseConfig `mapstructure:",squash"`
+}
+
 // Sender implements moira sender interface via script execution
 type Sender struct {
-	Exec string
-	log  moira.Logger
+	config Config
+	log    moira.Logger
 }
 
 type scriptNotification struct {
@@ -26,28 +32,29 @@ type scriptNotification struct {
 }
 
 // Init read yaml config
-func (sender *Sender) Init(senderSettings map[string]string, logger moira.Logger) error {
-	if senderSettings["name"] == "" {
-		return fmt.Errorf("Required name for sender type script")
+func (sender *Sender) Init(senderSettings interface{}, logger moira.Logger) error {
+	sender.log = logger
+	if err := mapstructure.Decode(senderSettings, sender.config); err != nil {
+		return err
 	}
-	args := strings.Split(senderSettings["exec"], " ")
+	if sender.config.Exec == "" {
+		return fmt.Errorf("exec field cannot be empty for script type")
+	}
+	args := strings.Split(sender.config.Exec, " ")
 	scriptFile := args[0]
 	infoFile, err := os.Stat(scriptFile)
 	if err != nil {
 		return fmt.Errorf("File %s not found", scriptFile)
 	}
 	if !infoFile.Mode().IsRegular() {
-		return fmt.Errorf("%s not file", scriptFile)
+		return fmt.Errorf("%s is not a file", scriptFile)
 	}
-	sender.Exec = senderSettings["exec"]
-	sender.log = logger
 	return nil
 }
 
 // SendEvents implements Sender interface Send
 func (sender *Sender) SendEvents(events moira.NotificationEvents, contact moira.ContactData, trigger moira.TriggerData, throttled bool) error {
-
-	execString := strings.Replace(sender.Exec, "${trigger_name}", trigger.Name, -1)
+	execString := strings.Replace(sender.config.Exec, "${trigger_name}", trigger.Name, -1)
 	execString = strings.Replace(execString, "${contact_value}", contact.Value, -1)
 
 	args := strings.Split(execString, " ")
@@ -57,7 +64,7 @@ func (sender *Sender) SendEvents(events moira.NotificationEvents, contact moira.
 		return fmt.Errorf("File %s not found", scriptFile)
 	}
 	if !infoFile.Mode().IsRegular() {
-		return fmt.Errorf("%s not file", scriptFile)
+		return fmt.Errorf("%s is not a file", scriptFile)
 	}
 
 	scriptMessage := &scriptNotification{
@@ -80,7 +87,7 @@ func (sender *Sender) SendEvents(events moira.NotificationEvents, contact moira.
 	sender.log.Debugf("Finished executing: %s", scriptFile)
 
 	if err != nil {
-		return fmt.Errorf("Failed exec [%s] Error [%s] Output: [%s]", sender.Exec, err.Error(), scriptOutput.String())
+		return fmt.Errorf("Failed exec [%s] Error [%v] Output: [%s]", sender.config.Exec, err, scriptOutput.String())
 	}
 	return nil
 }

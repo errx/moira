@@ -2,9 +2,10 @@ package notifier
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/moira-alert/moira"
 	"github.com/moira-alert/moira/metrics/graphite"
-	"time"
 )
 
 // Scheduler implements event scheduling functionality

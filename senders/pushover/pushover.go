@@ -6,32 +6,38 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/moira-alert/moira"
-
 	"github.com/gregdel/pushover"
+	"github.com/mitchellh/mapstructure"
+	"github.com/moira-alert/moira"
 )
+
+type Config struct {
+	APIToken               string `mapstructure:"name"`
+	moira.SenderBaseConfig `mapstructure:",squash"`
+}
 
 // Sender implements moira sender interface via pushover
 type Sender struct {
-	APIToken string
-	FrontURI string
-	log      moira.Logger
+	config Config
+	log    moira.Logger
 }
 
-// Init read yaml config
-func (sender *Sender) Init(senderSettings map[string]string, logger moira.Logger) error {
-	sender.APIToken = senderSettings["api_token"]
-	if sender.APIToken == "" {
-		return fmt.Errorf("Can not read pushover api_token from config")
-	}
+// Init check pushover settings
+func (sender *Sender) Init(senderSettings interface{}, logger moira.Logger) error {
 	sender.log = logger
-	sender.FrontURI = senderSettings["front_uri"]
+	if err := mapstructure.Decode(senderSettings, &sender.config); err != nil {
+		return err
+	}
+
+	if sender.config.APIToken == "" {
+		return fmt.Errorf("Can't read pushover api_token from config")
+	}
 	return nil
 }
 
 // SendEvents implements Sender interface Send
 func (sender *Sender) SendEvents(events moira.NotificationEvents, contact moira.ContactData, trigger moira.TriggerData, throttled bool) error {
-	api := pushover.New(sender.APIToken)
+	api := pushover.New(sender.config.APIToken)
 	recipient := pushover.NewRecipient(contact.Value)
 
 	subjectState := events.GetSubjectState()
@@ -76,7 +82,7 @@ func (sender *Sender) SendEvents(events moira.NotificationEvents, contact moira.
 		Retry:     5 * time.Minute,
 		Expire:    time.Hour,
 		Timestamp: timestamp,
-		URL:       fmt.Sprintf("%s/#/events/%s", sender.FrontURI, events[0].TriggerID),
+		URL:       fmt.Sprintf("%s/#/events/%s", sender.config.FrontURI, events[0].TriggerID),
 	}
 	_, err := api.SendMessage(pushoverMessage, recipient)
 	if err != nil {

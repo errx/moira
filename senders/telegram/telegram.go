@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tucnak/telebot"
+	"github.com/mitchellh/mapstructure"
 
 	"github.com/moira-alert/moira"
 )
@@ -25,11 +26,15 @@ var (
 	}
 )
 
+type Config struct {
+	APIToken               string `mapstructure:"api_token"`
+	moira.SenderBaseConfig `mapstructure:",squash"`
+}
+
 // Sender implements moira sender interface via telegram
 type Sender struct {
 	DataBase moira.Database
-	APIToken string
-	FrontURI string
+	config *Config
 	logger   moira.Logger
 	bot      *telebot.Bot
 }
@@ -43,24 +48,23 @@ func (r recipient) Destination() string {
 }
 
 // Init read yaml config
-func (sender *Sender) Init(senderSettings map[string]string, logger moira.Logger) error {
-	sender.APIToken = senderSettings["api_token"]
-	if sender.APIToken == "" {
+func (sender *Sender) Init(senderSettings interface{}, logger moira.Logger) error {
+	sender.logger = logger
+	if err := mapstructure.Decode(senderSettings, sender.config); err != nil {
+		return err
+	}
+	if sender.config.APIToken == "" {
 		return fmt.Errorf("Can not read telegram api_token from config")
 	}
-	sender.logger = logger
-	sender.FrontURI = senderSettings["front_uri"]
-
 	err := sender.StartTelebot()
 	if err != nil {
-		return fmt.Errorf("Error starting bot: %s", err)
+		return fmt.Errorf("Error starting bot: %v", err)
 	}
 	return nil
 }
 
 // SendEvents implements Sender interface Send
 func (sender *Sender) SendEvents(events moira.NotificationEvents, contact moira.ContactData, trigger moira.TriggerData, throttled bool) error {
-
 	var message bytes.Buffer
 
 	state := events.GetSubjectState()
@@ -90,7 +94,7 @@ func (sender *Sender) SendEvents(events moira.NotificationEvents, contact moira.
 		message.WriteString(fmt.Sprintf("\n\n...and %d more events.", len(events)-lineCount))
 	}
 
-	message.WriteString(fmt.Sprintf("\n\n%s/#/events/%s\n", sender.FrontURI, events[0].TriggerID))
+	message.WriteString(fmt.Sprintf("\n\n%s/#/events/%s\n", sender.config.FrontURI, events[0].TriggerID))
 
 	if throttled {
 		message.WriteString("\nPlease, fix your system or tune this trigger to generate less events.")
@@ -109,7 +113,7 @@ func (sender *Sender) SendEvents(events moira.NotificationEvents, contact moira.
 func (sender *Sender) StartTelebot() error {
 	ttl := time.Second * 30
 	var err error
-	sender.bot, err = telebot.NewBot(sender.APIToken)
+	sender.bot, err = telebot.NewBot(sender.config.APIToken)
 	if err != nil {
 		return err
 	}
@@ -137,7 +141,6 @@ func (sender *Sender) StartTelebot() error {
 func (sender *Sender) Loop(timeout time.Duration) {
 	messages := make(chan telebot.Message)
 	sender.bot.Listen(messages, timeout)
-
 	for {
 		message, ok := <-messages
 		if !ok {

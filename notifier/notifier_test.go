@@ -136,7 +136,7 @@ func configureNotifier(t *testing.T) {
 
 	sender.EXPECT().Init(senderSettings, logger).Return(nil)
 
-	notif.RegisterSender(senderSettings, sender)
+	notif.RegisterSender("test", senderSettings, sender)
 
 	Convey("Should return one sender", t, func() {
 		So(notif.GetSenders(), ShouldResemble, map[string]bool{"test": true})
