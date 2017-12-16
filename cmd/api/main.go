@@ -66,7 +66,7 @@ func main() {
 
 	configFile, err := getWebConfigBytes(logger, config.API.WebConfigPath)
 	if err != nil {
-		logger.Warningf("Failed to read web config file by path '%s', method 'api/config' will be return 404, error: %s'", config.API.WebConfigPath, err.Error())
+		logger.Warningf("Failed to read web config file by path '%s', method 'api/config' will be return 500, error: %s'", config.API.WebConfigPath, err.Error())
 	}
 
 	if config.Pprof.Listen != "" {
