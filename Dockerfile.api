@@ -4,6 +4,7 @@ WORKDIR /go/src/github.com/moira-alert/moira
 COPY . /go/src/github.com/moira-alert/moira/
 RUN go get github.com/kardianos/govendor
 RUN govendor sync
+RUN apk add --no-cache cairo
 RUN CGO_ENABLED=0 GOOS=linux go build -tags cairo -a -installsuffix cgo -o build/api github.com/moira-alert/moira/cmd/api
 
 
