@@ -10,6 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o build/api github.
 FROM alpine
 
 RUN apk add --no-cache ca-certificates && update-ca-certificates
+RUN apk add --no-cache cairo
 
 COPY pkg/api/api.yml /etc/moira/api.yml
 COPY pkg/api/web.json /etc/moira/web.json

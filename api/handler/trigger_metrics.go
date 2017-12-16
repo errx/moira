@@ -75,7 +75,7 @@ func getTriggerMetrics(writer http.ResponseWriter, request *http.Request) {
 			render.Render(writer, request, err)
 			return
 		}
-		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("Content-Type", "image/png")
 		writer.Write(pic)
 		return
 	default:
