@@ -95,6 +95,6 @@ func getMetricFormat(request *http.Request) (metricFormat, error) {
 	case "png":
 		return PNG, nil
 	default:
-		return JSON, fmt.Errorf("invalid request format type: %s", format)
+		return JSON, fmt.Errorf("invalid format type: %s", format)
 	}
 }
