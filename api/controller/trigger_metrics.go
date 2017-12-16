@@ -68,7 +68,7 @@ func GetTriggerMetricsPNG(dataBase moira.Database, from, to int64, triggerID str
 		}
 		return expr.MarshalPNG(&http.Request{}, metricsData), nil
 	}
-	return make([]byte, 0), nil
+	return nil, nil
 }
 
 // DeleteTriggerMetric deletes metric from last check and all trigger patterns metrics

@@ -6,7 +6,7 @@ RUN go get github.com/kardianos/govendor
 RUN govendor sync
 RUN apt-get update
 RUN apt-get -y install libcairo2-dev
-RUN CGO_ENABLED=0 GOOS=linux go build -tags cairo -a -installsuffix cgo -o build/api github.com/moira-alert/moira/cmd/api
+RUN go build -tags cairo -a -installsuffix cgo -o build/api github.com/moira-alert/moira/cmd/api
 
 
 FROM alpine
