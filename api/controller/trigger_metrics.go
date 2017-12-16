@@ -2,7 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"net/http"
 
+	"github.com/go-graphite/carbonapi/expr"
 	"github.com/moira-alert/moira"
 	"github.com/moira-alert/moira/api"
 	"github.com/moira-alert/moira/api/dto"
@@ -11,8 +13,8 @@ import (
 	"github.com/moira-alert/moira/target"
 )
 
-// GetTriggerMetrics gets all trigger metrics values, default values from: now - 10min, to: now
-func GetTriggerMetrics(dataBase moira.Database, from, to int64, triggerID string) (dto.TriggerMetrics, *api.ErrorResponse) {
+// GetTriggerMetricsJSON gets all trigger metrics values, default values from: now - 10min, to: now
+func GetTriggerMetricsJSON(dataBase moira.Database, from, to int64, triggerID string) (*dto.TriggerMetrics, *api.ErrorResponse) {
 	trigger, err := dataBase.GetTrigger(triggerID)
 	if err != nil {
 		if err == database.ErrNil {
@@ -21,7 +23,7 @@ func GetTriggerMetrics(dataBase moira.Database, from, to int64, triggerID string
 		return nil, api.ErrorInternalServer(err)
 	}
 
-	triggerMetrics := make(map[string][]moira.MetricValue)
+	var triggerMetrics dto.TriggerMetrics = make(map[string][]moira.MetricValue)
 	isSimpleTrigger := trigger.IsSimple()
 	for _, tar := range trigger.Targets {
 		result, err := target.EvaluateTarget(dataBase, tar, from, to, isSimpleTrigger)
@@ -40,7 +42,33 @@ func GetTriggerMetrics(dataBase moira.Database, from, to int64, triggerID string
 			triggerMetrics[timeSeries.Name] = values
 		}
 	}
-	return triggerMetrics, nil
+	return &triggerMetrics, nil
+}
+
+// GetTriggerMetricsPNG gets all trigger metrics values, default values from: now - 10min, to: now
+func GetTriggerMetricsPNG(dataBase moira.Database, from, to int64, triggerID string) ([]byte, *api.ErrorResponse) {
+	trigger, err := dataBase.GetTrigger(triggerID)
+	if err != nil {
+		if err == database.ErrNil {
+			return nil, api.ErrorInvalidRequest(fmt.Errorf("trigger not found"))
+		}
+		return nil, api.ErrorInternalServer(err)
+	}
+
+	isSimpleTrigger := trigger.IsSimple()
+	for _, tar := range trigger.Targets {
+		result, err := target.EvaluateTarget(dataBase, tar, from, to, isSimpleTrigger)
+		if err != nil {
+			return nil, api.ErrorInternalServer(err)
+		}
+
+		var metricsData = make([]*expr.MetricData, 0, len(result.TimeSeries))
+		for _, ts := range result.TimeSeries {
+			metricsData = append(metricsData, &ts.MetricData)
+		}
+		return expr.MarshalPNG(&http.Request{}, metricsData), nil
+	}
+	return make([]byte, 0), nil
 }
 
 // DeleteTriggerMetric deletes metric from last check and all trigger patterns metrics
