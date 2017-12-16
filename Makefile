@@ -7,6 +7,11 @@ VENDOR := "SKB Kontur"
 URL := "https://github.com/moira-alert/moira"
 LICENSE := "MIT"
 
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+        EXTRA_PKG_CONFIG_PATH=/opt/X11/lib/pkgconfig
+endif
+
 .PHONY: default
 default: test build
 
@@ -28,7 +33,7 @@ test: prepare
 .PHONY: build
 build: prepare
 	for service in "filter" "notifier" "api" "checker" "cli" ; do \
-		go build -a -tags cairo -installsuffix cgo -ldflags "-X main.Version=${VERSION} -X main.GoVersion=${GO_VERSION} -X main.GitHash=${GIT_HASH}" -o build/$$service github.com/moira-alert/moira/cmd/$$service ; \
+		PKG_CONFIG_PATH="$(EXTRA_PKG_CONFIG_PATH)" go build -a -tags cairo -installsuffix cgo -ldflags "-X main.Version=${VERSION} -X main.GoVersion=${GO_VERSION} -X main.GitHash=${GIT_HASH}" -o build/$$service github.com/moira-alert/moira/cmd/$$service ; \
 	done
 
 .PHONY: build_nocairo

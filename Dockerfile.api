@@ -1,18 +1,17 @@
-FROM golang:1.9.2 as builder
+FROM golang:alpine as builder
 
 WORKDIR /go/src/github.com/moira-alert/moira
 COPY . /go/src/github.com/moira-alert/moira/
+RUN apk add --no-cache cairo cairo-dev git gcc musl-dev
 RUN go get github.com/kardianos/govendor
 RUN govendor sync
-RUN apt-get update
-RUN apt-get -y install libcairo2-dev
-RUN go build -tags cairo -a -installsuffix cgo -o build/api github.com/moira-alert/moira/cmd/api
+RUN PKG_CONFIG_PATH="/usr/lib/pkgconfig" go build -tags cairo -a -installsuffix cgo -o build/api github.com/moira-alert/moira/cmd/api
 
 
 FROM alpine
 
 RUN apk add --no-cache ca-certificates && update-ca-certificates
-RUN apk add --no-cache cairo
+RUN apk add --no-cache cairo cairo-dev
 
 COPY pkg/api/api.yml /etc/moira/api.yml
 COPY pkg/api/web.json /etc/moira/web.json
