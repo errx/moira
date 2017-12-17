@@ -13,14 +13,6 @@ import (
 	"github.com/moira-alert/moira/api/middleware"
 )
 
-type metricFormat int
-
-// Supported metrics format types
-const (
-	PNG metricFormat = iota
-	JSON
-)
-
 func triggerMetrics(router chi.Router) {
 	router.With(middleware.DateRange("-10minutes", "now")).Get("/", getTriggerMetrics)
 	router.Delete("/", deleteTriggerMetric)
@@ -52,49 +44,12 @@ func getTriggerMetrics(writer http.ResponseWriter, request *http.Request) {
 		render.Render(writer, request, api.ErrorInvalidRequest(fmt.Errorf("can not parse to: %v", toStr)))
 		return
 	}
-	format, err := getMetricFormat(request)
+	triggerMetrics, err := controller.GetTriggerMetrics(database, int64(from), int64(to), triggerID)
 	if err != nil {
-		render.Render(writer, request, api.ErrorInvalidRequest(err))
+		render.Render(writer, request, err)
 		return
 	}
-
-	switch format {
-	case JSON:
-		triggerMetrics, err := controller.GetTriggerMetricsJSON(database, int64(from), int64(to), triggerID)
-		if err != nil {
-			render.Render(writer, request, err)
-			return
-		}
-		if err := render.Render(writer, request, triggerMetrics); err != nil {
-			render.Render(writer, request, api.ErrorRender(err))
-		}
-		return
-	case PNG:
-		pic, err := controller.GetTriggerMetricsPNG(database, int64(from), int64(to), triggerID)
-		if err != nil {
-			render.Render(writer, request, err)
-			return
-		}
-		writer.Header().Set("Content-Type", "image/png")
-		writer.Write(pic)
-		return
-	default:
-		render.Render(writer, request, api.ErrorInvalidRequest(fmt.Errorf("unknown metric format type")))
-		return
-	}
-}
-
-func getMetricFormat(request *http.Request) (metricFormat, error) {
-	format := request.URL.Query().Get("format")
-	if format == "" {
-		return JSON, nil
-	}
-	switch format {
-	case "json":
-		return JSON, nil
-	case "png":
-		return PNG, nil
-	default:
-		return JSON, fmt.Errorf("invalid format type: %s", format)
+	if err := render.Render(writer, request, triggerMetrics); err != nil {
+		render.Render(writer, request, api.ErrorRender(err))
 	}
 }

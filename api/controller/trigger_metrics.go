@@ -13,8 +13,8 @@ import (
 	"github.com/moira-alert/moira/target"
 )
 
-// GetTriggerMetricsJSON gets all trigger metrics values, default values from: now - 10min, to: now
-func GetTriggerMetricsJSON(dataBase moira.Database, from, to int64, triggerID string) (*dto.TriggerMetrics, *api.ErrorResponse) {
+// GetTriggerMetrics gets all trigger metrics values, default values from: now - 10min, to: now
+func GetTriggerMetrics(dataBase moira.Database, from, to int64, triggerID string) (*dto.TriggerMetrics, *api.ErrorResponse) {
 	trigger, err := dataBase.GetTrigger(triggerID)
 	if err != nil {
 		if err == database.ErrNil {
@@ -23,23 +23,31 @@ func GetTriggerMetricsJSON(dataBase moira.Database, from, to int64, triggerID st
 		return nil, api.ErrorInternalServer(err)
 	}
 
-	var triggerMetrics dto.TriggerMetrics = make(map[string][]moira.MetricValue)
+	triggerMetrics := dto.TriggerMetrics{
+		Main:       make(map[string][]*moira.MetricValue),
+		Additional: make(map[string][]*moira.MetricValue),
+	}
+
 	isSimpleTrigger := trigger.IsSimple()
-	for _, tar := range trigger.Targets {
+	for i, tar := range trigger.Targets {
 		result, err := target.EvaluateTarget(dataBase, tar, from, to, isSimpleTrigger)
 		if err != nil {
 			return nil, api.ErrorInternalServer(err)
 		}
 		for _, timeSeries := range result.TimeSeries {
-			values := make([]moira.MetricValue, 0)
+			values := make([]*moira.MetricValue, 0)
 			for i := 0; i < len(timeSeries.Values); i++ {
 				timestamp := int64(timeSeries.StartTime + int32(i)*timeSeries.StepTime)
 				value := timeSeries.GetTimestampValue(timestamp)
 				if !checker.IsInvalidValue(value) {
-					values = append(values, moira.MetricValue{Value: value, Timestamp: timestamp})
+					values = append(values, &moira.MetricValue{Value: value, Timestamp: timestamp})
 				}
 			}
-			triggerMetrics[timeSeries.Name] = values
+			if i == 0 {
+				triggerMetrics.Main[timeSeries.Name] = values
+			} else {
+				triggerMetrics.Additional[timeSeries.Name] = values
+			}
 		}
 	}
 	return &triggerMetrics, nil
