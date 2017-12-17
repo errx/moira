@@ -2,9 +2,7 @@ package controller
 
 import (
 	"fmt"
-	"net/http"
 
-	"github.com/go-graphite/carbonapi/expr"
 	"github.com/moira-alert/moira"
 	"github.com/moira-alert/moira/api"
 	"github.com/moira-alert/moira/api/dto"
@@ -13,70 +11,68 @@ import (
 	"github.com/moira-alert/moira/target"
 )
 
-// GetTriggerMetrics gets all trigger metrics values, default values from: now - 10min, to: now
-func GetTriggerMetrics(dataBase moira.Database, from, to int64, triggerID string) (*dto.TriggerMetrics, *api.ErrorResponse) {
+// GetTriggerEvaluationResult evaluates every target in trigger and returns
+// result, separated on main and additional targets metrics
+func GetTriggerEvaluationResult(dataBase moira.Database, from, to int64, triggerID string) (*checker.TriggerTimeSeries, error) {
 	trigger, err := dataBase.GetTrigger(triggerID)
 	if err != nil {
-		if err == database.ErrNil {
-			return nil, api.ErrorInvalidRequest(fmt.Errorf("trigger not found"))
-		}
-		return nil, api.ErrorInternalServer(err)
+		return nil, err
 	}
-
-	triggerMetrics := dto.TriggerMetrics{
-		Main:       make(map[string][]*moira.MetricValue),
-		Additional: make(map[string][]*moira.MetricValue),
+	triggerMetrics := &checker.TriggerTimeSeries{
+		Main:       make([]*target.TimeSeries, 0),
+		Additional: make([]*target.TimeSeries, 0),
 	}
-
 	isSimpleTrigger := trigger.IsSimple()
 	for i, tar := range trigger.Targets {
 		result, err := target.EvaluateTarget(dataBase, tar, from, to, isSimpleTrigger)
 		if err != nil {
-			return nil, api.ErrorInternalServer(err)
+			return nil, err
 		}
-		for _, timeSeries := range result.TimeSeries {
-			values := make([]*moira.MetricValue, 0)
-			for i := 0; i < len(timeSeries.Values); i++ {
-				timestamp := int64(timeSeries.StartTime + int32(i)*timeSeries.StepTime)
-				value := timeSeries.GetTimestampValue(timestamp)
-				if !checker.IsInvalidValue(value) {
-					values = append(values, &moira.MetricValue{Value: value, Timestamp: timestamp})
-				}
-			}
-			if i == 0 {
-				triggerMetrics.Main[timeSeries.Name] = values
-			} else {
-				triggerMetrics.Additional[timeSeries.Name] = values
-			}
+		if i == 0 {
+			triggerMetrics.Main = result.TimeSeries
+		} else {
+			triggerMetrics.Additional = append(triggerMetrics.Additional, result.TimeSeries...)
 		}
 	}
-	return &triggerMetrics, nil
+	return triggerMetrics, nil
 }
 
-// GetTriggerMetricsPNG gets all trigger metrics values, default values from: now - 10min, to: now
-func GetTriggerMetricsPNG(dataBase moira.Database, from, to int64, triggerID string) ([]byte, *api.ErrorResponse) {
-	trigger, err := dataBase.GetTrigger(triggerID)
+// GetTriggerMetrics gets all trigger metrics values, default values from: now - 10min, to: now
+func GetTriggerMetrics(dataBase moira.Database, from, to int64, triggerID string) (*dto.TriggerMetrics, *api.ErrorResponse) {
+	tts, err := GetTriggerEvaluationResult(dataBase, from, to, triggerID)
 	if err != nil {
 		if err == database.ErrNil {
 			return nil, api.ErrorInvalidRequest(fmt.Errorf("trigger not found"))
 		}
 		return nil, api.ErrorInternalServer(err)
 	}
-
-	isSimpleTrigger := trigger.IsSimple()
-	for _, tar := range trigger.Targets {
-		result, err := target.EvaluateTarget(dataBase, tar, from, to, isSimpleTrigger)
-		if err != nil {
-			return nil, api.ErrorInternalServer(err)
-		}
-
-		var metricsData = make([]*expr.MetricData, 0, len(result.TimeSeries))
-		for _, ts := range result.TimeSeries {
-			metricsData = append(metricsData, &ts.MetricData)
-		}
-		return expr.MarshalPNG(&http.Request{}, metricsData), nil
+	triggerMetrics := dto.TriggerMetrics{
+		Main:       make(map[string][]*moira.MetricValue),
+		Additional: make(map[string][]*moira.MetricValue),
 	}
-	return nil, nil
+	for _, timeSeries := range tts.Main {
+		values := make([]*moira.MetricValue, 0)
+		for i := 0; i < len(timeSeries.Values); i++ {
+			timestamp := int64(timeSeries.StartTime + int32(i)*timeSeries.StepTime)
+			value := timeSeries.GetTimestampValue(timestamp)
+			if !checker.IsInvalidValue(value) {
+				values = append(values, &moira.MetricValue{Value: value, Timestamp: timestamp})
+			}
+		}
+		triggerMetrics.Main[timeSeries.Name] = values
+	}
+	for _, timeSeries := range tts.Additional {
+		values := make([]*moira.MetricValue, 0)
+		for i := 0; i < len(timeSeries.Values); i++ {
+			timestamp := int64(timeSeries.StartTime + int32(i)*timeSeries.StepTime)
+			value := timeSeries.GetTimestampValue(timestamp)
+			if !checker.IsInvalidValue(value) {
+				values = append(values, &moira.MetricValue{Value: value, Timestamp: timestamp})
+			}
+		}
+		triggerMetrics.Additional[timeSeries.Name] = values
+	}
+	return &triggerMetrics, nil
 }
 
 // DeleteTriggerMetric deletes metric from last check and all trigger patterns metrics
