@@ -112,10 +112,10 @@
 			"revisionTime": "2017-09-06T11:25:25Z"
 		},
 		{
-			"checksumSHA1": "u9nzYR72uwCIBUIjKRtpkbAUwtw=",
+			"checksumSHA1": "/cvF345XLAwnkmK2VK29SRPbQrk=",
 			"path": "github.com/go-graphite/carbonapi/expr",
-			"revision": "a5304b99d57da999a8561f6dee7745ef88164d2c",
-			"revisionTime": "2017-12-01T19:22:29Z"
+			"revision": "1a009487b9c2bb8fc586d96dbd7d864ea367b017",
+			"revisionTime": "2017-12-18T11:57:53Z"
 		},
 		{
 			"checksumSHA1": "2wAgO9fG0owb/hGf2NYELPyRG00=",
