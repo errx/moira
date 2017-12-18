@@ -13,10 +13,10 @@ import (
 
 // GetTriggerEvaluationResult evaluates every target in trigger and returns
 // result, separated on main and additional targets metrics
-func GetTriggerEvaluationResult(dataBase moira.Database, from, to int64, triggerID string) (*checker.TriggerTimeSeries, error) {
+func GetTriggerEvaluationResult(dataBase moira.Database, from, to int64, triggerID string) (*checker.TriggerTimeSeries, *moira.Trigger, error) {
 	trigger, err := dataBase.GetTrigger(triggerID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	triggerMetrics := &checker.TriggerTimeSeries{
 		Main:       make([]*target.TimeSeries, 0),
@@ -26,7 +26,7 @@ func GetTriggerEvaluationResult(dataBase moira.Database, from, to int64, trigger
 	for i, tar := range trigger.Targets {
 		result, err := target.EvaluateTarget(dataBase, tar, from, to, isSimpleTrigger)
 		if err != nil {
-			return nil, err
+			return nil, &trigger, err
 		}
 		if i == 0 {
 			triggerMetrics.Main = result.TimeSeries
@@ -34,12 +34,12 @@ func GetTriggerEvaluationResult(dataBase moira.Database, from, to int64, trigger
 			triggerMetrics.Additional = append(triggerMetrics.Additional, result.TimeSeries...)
 		}
 	}
-	return triggerMetrics, nil
+	return triggerMetrics, &trigger, nil
 }
 
 // GetTriggerMetrics gets all trigger metrics values, default values from: now - 10min, to: now
 func GetTriggerMetrics(dataBase moira.Database, from, to int64, triggerID string) (*dto.TriggerMetrics, *api.ErrorResponse) {
-	tts, err := GetTriggerEvaluationResult(dataBase, from, to, triggerID)
+	tts, _, err := GetTriggerEvaluationResult(dataBase, from, to, triggerID)
 	if err != nil {
 		if err == database.ErrNil {
 			return nil, api.ErrorInvalidRequest(fmt.Errorf("trigger not found"))
