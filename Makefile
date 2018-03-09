@@ -39,7 +39,7 @@ build: prepare
 .PHONY: build_nocairo
 build_nocairo: prepare
 	for service in "filter" "notifier" "api" "checker" "cli" ; do \
-		go build -a -installsuffix cgo -ldflags "-X main.Version=${VERSION} -X main.GoVersion=${GO_VERSION} -X main.GitHash=${GIT_HASH}" -o build/$$service github.com/moira-alert/moira/cmd/$$service ; \
+		go build -a -installsuffix cgo -ldflags "-X main.MoiraVersion=${VERSION} -X main.GoVersion=${GO_VERSION} -X main.GitCommit=${GIT_HASH}" -o build/$$service github.com/moira-alert/moira/cmd/$$service ; \
 	done
 
 .PHONY: clean
