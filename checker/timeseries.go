@@ -8,6 +8,8 @@ import (
 	"github.com/moira-alert/moira/target"
 )
 
+// TriggerTimeSeries represent collection of Main target timeseries
+// and collection of additions targets timeseries
 type TriggerTimeSeries struct {
 	Main       []*target.TimeSeries
 	Additional []*target.TimeSeries
