@@ -54,7 +54,7 @@ func (storage *PatternStorage) RefreshTree() error {
 
 // ProcessIncomingMetric validates, parses and matches incoming raw string
 func (storage *PatternStorage) ProcessIncomingMetric(lineBytes []byte) *moira.MatchedMetric {
-	storage.metrics.TotalMetricsReceived.Mark(1)
+	storage.metrics.TotalMetricsReceived.Inc(1)
 	count := storage.metrics.TotalMetricsReceived.Count()
 
 	metric, value, timestamp, err := storage.parseMetricFromString(lineBytes)
@@ -63,7 +63,7 @@ func (storage *PatternStorage) ProcessIncomingMetric(lineBytes []byte) *moira.Ma
 		return nil
 	}
 
-	storage.metrics.ValidMetricsReceived.Mark(1)
+	storage.metrics.ValidMetricsReceived.Inc(1)
 
 	matchingStart := time.Now()
 	matched := storage.matchPattern(metric)
@@ -71,7 +71,7 @@ func (storage *PatternStorage) ProcessIncomingMetric(lineBytes []byte) *moira.Ma
 		storage.metrics.MatchingTimer.UpdateSince(matchingStart)
 	}
 	if len(matched) > 0 {
-		storage.metrics.MatchingMetricsReceived.Mark(1)
+		storage.metrics.MatchingMetricsReceived.Inc(1)
 		return &moira.MatchedMetric{
 			Metric:             string(metric),
 			Patterns:           matched,
@@ -158,7 +158,7 @@ func (*PatternStorage) parseMetricFromString(line []byte) ([]byte, float64, int6
 		return nil, 0, 0, fmt.Errorf("cannot parse value: '%s' (%s)", line, err)
 	}
 
-	timestamp, err := strconv.ParseInt(string(parts[2]), 10, 64)
+	timestamp, err := parseTimestamp(string(parts[2]))
 	if err != nil || timestamp == 0 {
 		return nil, 0, 0, fmt.Errorf("cannot parse timestamp: '%s' (%s)", line, err)
 	}
@@ -218,6 +218,11 @@ func (storage *PatternStorage) buildTree(patterns []string) error {
 
 	storage.PatternTree = newTree
 	return nil
+}
+
+func parseTimestamp(unixTimestamp string) (int64, error) {
+	timestamp, err := strconv.ParseFloat(unixTimestamp, 64)
+	return int64(timestamp), err
 }
 
 func hasEmptyParts(parts []string) bool {

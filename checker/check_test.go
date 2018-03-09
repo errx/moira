@@ -105,7 +105,7 @@ func TestGetTimeSeriesState(t *testing.T) {
 		triggerChecker.trigger.WarnValue = nil
 		triggerChecker.trigger.ErrorValue = nil
 		metricState, err := triggerChecker.getTimeSeriesState(tts, tts.Main[0], metricLastState, 42, 27)
-		So(err.Error(), ShouldResemble, "Error value and Warning value can not be empty")
+		So(err.Error(), ShouldResemble, "error value and Warning value can not be empty")
 		So(metricState, ShouldBeNil)
 	})
 }
@@ -258,7 +258,7 @@ func TestGetTimeSeriesStepsStates(t *testing.T) {
 		triggerChecker.trigger.WarnValue = nil
 		triggerChecker.trigger.ErrorValue = nil
 		metricState, err := triggerChecker.getTimeSeriesStepsStates(tts, tts.Main[1], metricLastState)
-		So(err.Error(), ShouldResemble, "Error value and Warning value can not be empty")
+		So(err.Error(), ShouldResemble, "error value and Warning value can not be empty")
 		So(metricState, ShouldBeNil)
 	})
 }
@@ -600,7 +600,7 @@ func TestHandleTrigger(t *testing.T) {
 		lastCheck.Timestamp = 4267
 		dataBase.EXPECT().GetPatternMetrics(pattern).Return([]string{}, nil)
 		checkData, err := triggerChecker.handleTrigger()
-		So(err, ShouldResemble, ErrTriggerHasOnlyWildcards)
+		So(err, ShouldResemble, ErrTriggerHasOnlyWildcards{})
 		So(checkData, ShouldResemble, moira.CheckData{
 			Metrics:   lastCheck.Metrics,
 			Timestamp: triggerChecker.Until,
@@ -645,7 +645,7 @@ func TestHandleTrigger(t *testing.T) {
 		dataBase.EXPECT().RemoveMetricsValues([]string{metric1, metric2}, gomock.Any())
 		dataBase.EXPECT().PushNotificationEvent(gomock.Any(), true).Return(nil)
 		checkData, err := triggerChecker1.handleTrigger()
-		So(err, ShouldResemble, ErrTriggerHasSameTimeSeriesNames)
+		So(err, ShouldResemble, ErrTriggerHasSameTimeSeriesNames{names: []string{"super"}})
 		So(checkData, ShouldResemble, moira.CheckData{
 			Metrics: map[string]moira.MetricState{
 				"super": {
@@ -713,7 +713,7 @@ func TestHandleErrorCheck(t *testing.T) {
 				Timestamp: time.Now().Unix(),
 				Message:   "Trigger has no metrics, check your target",
 			}
-			actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasNoTimeSeries)
+			actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasNoTimeSeries{})
 			So(err, ShouldBeNil)
 			So(actual, ShouldResemble, checkData)
 		})
@@ -737,15 +737,16 @@ func TestHandleErrorCheck(t *testing.T) {
 				Timestamp: time.Now().Unix(),
 			}
 			event := &moira.NotificationEvent{
-				Timestamp: checkData.Timestamp,
-				Message:   &err1,
-				TriggerID: triggerChecker.TriggerID,
-				OldState:  NODATA,
-				State:     NODATA,
+				IsTriggerEvent: true,
+				Timestamp:      checkData.Timestamp,
+				Message:        &err1,
+				TriggerID:      triggerChecker.TriggerID,
+				OldState:       NODATA,
+				State:          NODATA,
 			}
 
 			dataBase.EXPECT().PushNotificationEvent(event, true).Return(nil)
-			actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasNoTimeSeries)
+			actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasNoTimeSeries{})
 			expected := moira.CheckData{
 				State:          NODATA,
 				Timestamp:      checkData.Timestamp,
@@ -777,7 +778,7 @@ func TestHandleErrorCheck(t *testing.T) {
 		}
 
 		dataBase.EXPECT().PushNotificationEvent(gomock.Any(), true).Return(nil)
-		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasOnlyWildcards)
+		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasOnlyWildcards{})
 		expected := moira.CheckData{
 			State:          NODATA,
 			Timestamp:      checkData.Timestamp,
@@ -810,7 +811,7 @@ func TestHandleErrorCheck(t *testing.T) {
 			Timestamp: time.Now().Unix(),
 		}
 
-		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasOnlyWildcards)
+		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasOnlyWildcards{})
 		expected := moira.CheckData{
 			Metrics:        checkData.Metrics,
 			State:          OK,
@@ -840,7 +841,7 @@ func TestHandleErrorCheck(t *testing.T) {
 			Timestamp: time.Now().Unix(),
 		}
 
-		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasOnlyWildcards)
+		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasOnlyWildcards{})
 		expected := moira.CheckData{
 			Metrics:        checkData.Metrics,
 			State:          OK,
@@ -872,7 +873,7 @@ func TestHandleErrorCheck(t *testing.T) {
 			Timestamp: now,
 		}
 
-		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasOnlyWildcards)
+		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasOnlyWildcards{})
 		expected := moira.CheckData{
 			Metrics:        checkData.Metrics,
 			State:          OK,
@@ -935,12 +936,46 @@ func TestHandleErrorCheck(t *testing.T) {
 
 		dataBase.EXPECT().PushNotificationEvent(gomock.Any(), true).Return(nil)
 
-		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasSameTimeSeriesNames)
+		actual, err := triggerChecker.handleErrorCheck(checkData, ErrTriggerHasSameTimeSeriesNames{names: []string{"first", "second"}})
 		expected := moira.CheckData{
 			State:          EXCEPTION,
 			Timestamp:      checkData.Timestamp,
 			EventTimestamp: checkData.Timestamp,
-			Message:        "Trigger has same timeseries names",
+			Message:        "Trigger has same timeseries names: first, second",
+		}
+		So(err, ShouldBeNil)
+		So(actual, ShouldResemble, expected)
+		mockCtrl.Finish()
+	})
+
+	Convey("Handle additional trigger target has more than one timeseries", t, func() {
+		triggerChecker := TriggerChecker{
+			TriggerID: "SuperId",
+			Database:  dataBase,
+			Logger:    logger,
+			ttl:       60,
+			trigger: &moira.Trigger{
+				Targets: []string{"aliasByNode(some.data.*,2)", "aliasByNode(some.more.data.*,2)"},
+			},
+			ttlState: NODATA,
+			lastCheck: &moira.CheckData{
+				Timestamp: time.Now().Unix(),
+				State:     NODATA,
+			},
+		}
+		checkData := moira.CheckData{
+			State:     NODATA,
+			Timestamp: time.Now().Unix(),
+		}
+
+		dataBase.EXPECT().PushNotificationEvent(gomock.Any(), true).Return(nil)
+
+		actual, err := triggerChecker.handleErrorCheck(checkData, ErrWrongTriggerTarget(2))
+		expected := moira.CheckData{
+			State:          EXCEPTION,
+			Timestamp:      checkData.Timestamp,
+			EventTimestamp: checkData.Timestamp,
+			Message:        "Target t2 has more than one timeseries",
 		}
 		So(err, ShouldBeNil)
 		So(actual, ShouldResemble, expected)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"strings"
 
 	"github.com/moira-alert/moira"
 	"github.com/moira-alert/moira/api/middleware"
@@ -88,6 +89,11 @@ func (trigger *Trigger) Bind(request *http.Request) error {
 	if len(trigger.Tags) == 0 {
 		return fmt.Errorf("tags is required")
 	}
+	reservedTagsFound := checkTriggerTags(trigger.Tags)
+	if len(reservedTagsFound) > 0 {
+		forbiddenTags := strings.Join(reservedTagsFound, ", ")
+		return fmt.Errorf("forbidden tags: %s", forbiddenTags)
+	}
 	if trigger.Name == "" {
 		return fmt.Errorf("trigger name is required")
 	}
@@ -127,12 +133,14 @@ func resolvePatterns(request *http.Request, trigger *Trigger, expressionValues *
 		if err != nil {
 			return err
 		}
+
 		trigger.Patterns = append(trigger.Patterns, result.Patterns...)
-		for _, timeSeries := range result.TimeSeries {
-			timeSeriesNames[timeSeries.Name] = true
-		}
+
 		if targetNum == 1 {
 			expressionValues.MainTargetValue = 42
+			for _, timeSeries := range result.TimeSeries {
+				timeSeriesNames[timeSeries.Name] = true
+			}
 		} else {
 			targetName := fmt.Sprintf("t%v", targetNum)
 			expressionValues.AdditionalTargetsValues[targetName] = 42
@@ -141,6 +149,17 @@ func resolvePatterns(request *http.Request, trigger *Trigger, expressionValues *
 	}
 	middleware.SetTimeSeriesNames(request, timeSeriesNames)
 	return nil
+}
+
+func checkTriggerTags(tags []string) []string {
+	reservedTagsFound := make([]string, 0)
+	for _, tag := range tags {
+		switch tag {
+		case moira.EventHighDegradationTag, moira.EventDegradationTag, moira.EventProgressTag:
+			reservedTagsFound = append(reservedTagsFound, tag)
+		}
+	}
+	return reservedTagsFound
 }
 
 func (*Trigger) Render(w http.ResponseWriter, r *http.Request) error {

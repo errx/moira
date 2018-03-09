@@ -3,14 +3,27 @@ package redis
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
+	"github.com/FZambia/go-sentinel"
 	"github.com/garyburd/redigo/redis"
 	"github.com/patrickmn/go-cache"
 	"gopkg.in/redsync.v1"
 	"gopkg.in/tomb.v2"
 
 	"github.com/moira-alert/moira"
+)
+
+const pubSubWorkerChannelSize = 16384
+
+const (
+	cacheCleanupInterval         = time.Minute * 60
+	cacheValueExpirationDuration = time.Minute
+)
+
+const (
+	receiveErrorSleepDuration = time.Second
 )
 
 // DbConnector contains redis pool
@@ -25,44 +38,116 @@ type DbConnector struct {
 
 // NewDatabase creates Redis pool based on config
 func NewDatabase(logger moira.Logger, config Config) *DbConnector {
-	pool := newRedisPool(fmt.Sprintf("%s:%s", config.Host, config.Port), config.DBID)
-	db := DbConnector{
+	pool := newRedisPool(logger, config)
+	return &DbConnector{
 		pool:            pool,
 		logger:          logger,
-		retentionCache:  cache.New(time.Minute, time.Minute*60),
-		metricsCache:    cache.New(time.Minute, time.Minute*60),
+		retentionCache:  cache.New(cacheValueExpirationDuration, cacheCleanupInterval),
+		metricsCache:    cache.New(cacheValueExpirationDuration, cacheCleanupInterval),
 		messengersCache: cache.New(cache.NoExpiration, cache.DefaultExpiration),
 		sync:            redsync.New([]redsync.Pool{pool}),
 	}
-	return &db
 }
 
-func newRedisPool(redisURI string, dbID ...int) *redis.Pool {
+func newRedisPool(logger moira.Logger, config Config) *redis.Pool {
+	serverAddr := net.JoinHostPort(config.Host, config.Port)
+	useSentinel := config.MasterName != "" && len(config.SentinelAddresses) > 0
+	if !useSentinel {
+		logger.Infof("Redis: %v, DbID: %v", serverAddr, config.DBID)
+	} else {
+		logger.Infof("Redis: Sentinel for name: %v, DbID: %v", config.MasterName, config.DBID)
+	}
+	sntnl, err := createSentinel(logger, config, useSentinel)
+	if err != nil {
+		logger.Error(err)
+		return nil
+	}
+
+	var lastMu sync.Mutex
+	var lastMaster string
+
 	return &redis.Pool{
 		MaxIdle:     3,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", redisURI)
+			if sntnl != nil {
+				serverAddr, err = sntnl.MasterAddr()
+				if err != nil {
+					return nil, err
+				}
+				lastMu.Lock()
+				if serverAddr != lastMaster {
+					logger.Infof("Redis master discovered: %s", serverAddr)
+					lastMaster = serverAddr
+				}
+				lastMu.Unlock()
+			}
+			c, err := redis.Dial("tcp", serverAddr)
 			if err != nil {
 				return nil, err
 			}
-			if len(dbID) > 0 {
-				c.Do("SELECT", dbID[0])
+			if config.DBID != 0 {
+				if _, err = c.Do("SELECT", config.DBID); err != nil {
+					c.Close()
+					return nil, err
+				}
 			}
 			return c, err
 		},
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			if useSentinel {
+				if !sentinel.TestRole(c, "master") {
+					return fmt.Errorf("failed master role check")
+				}
+				return nil
+			}
 			_, err := c.Do("PING")
 			return err
 		},
 	}
 }
 
+func createSentinel(logger moira.Logger, config Config, useSentinel bool) (*sentinel.Sentinel, error) {
+	if useSentinel {
+		sntnl := &sentinel.Sentinel{
+			Addrs:      config.SentinelAddresses,
+			MasterName: config.MasterName,
+			Dial: func(addr string) (redis.Conn, error) {
+				timeout := 300 * time.Millisecond
+				c, err := redis.Dial("tcp", addr,
+					redis.DialConnectTimeout(timeout),
+					redis.DialReadTimeout(timeout),
+					redis.DialWriteTimeout(timeout))
+				if err != nil {
+					return nil, err
+				}
+				return c, nil
+			},
+		}
+
+		// Periodically discover new Sentinels.
+		go func() {
+			if err := sntnl.Discover(); err != nil {
+				logger.Error(err)
+			}
+			checkTicker := time.NewTicker(30 * time.Second)
+			for {
+				<-checkTicker.C
+				if err := sntnl.Discover(); err != nil {
+					logger.Error(err)
+				}
+			}
+		}()
+		return sntnl, nil
+	}
+	return nil, nil
+}
+
 func (connector *DbConnector) makePubSubConnection(channel string) (*redis.PubSubConn, error) {
 	c := connector.pool.Get()
 	psc := redis.PubSubConn{Conn: c}
 	if err := psc.Subscribe(channel); err != nil {
-		return nil, fmt.Errorf("Failed to subscribe to '%s', error: %v", channel, err)
+		return nil, fmt.Errorf("failed to subscribe to '%s', error: %v", channel, err)
 	}
 	return &psc, nil
 }
@@ -79,17 +164,21 @@ func (connector *DbConnector) manageSubscriptions(tomb *tomb.Tomb, channel strin
 		psc.Unsubscribe()
 	}()
 
-	dataChan := make(chan []byte)
+	dataChan := make(chan []byte, pubSubWorkerChannelSize)
 	go func() {
 		defer psc.Close()
 		for {
 			switch n := psc.Receive().(type) {
 			case redis.Message:
+				if len(n.Data) == 0 {
+					continue
+				}
 				dataChan <- n.Data
 			case redis.Subscription:
-				if n.Kind == "subscribe" {
+				switch n.Kind {
+				case "subscribe":
 					connector.logger.Infof("Subscribe to %s channel, current subscriptions is %v", n.Channel, n.Count)
-				} else if n.Kind == "unsubscribe" {
+				case "unsubscribe":
 					connector.logger.Infof("Unsubscribe from %s channel, current subscriptions is %v", n.Channel, n.Count)
 					if n.Count == 0 {
 						connector.logger.Infof("No more subscriptions, exit...")
@@ -98,18 +187,18 @@ func (connector *DbConnector) manageSubscriptions(tomb *tomb.Tomb, channel strin
 					}
 				}
 			case *net.OpError:
-				connector.logger.Info("psc.Receive() returned *net.OpError, reconnecting")
+				connector.logger.Infof("psc.Receive() returned *net.OpError: %s. Reconnecting...", n.Err.Error())
 				newPsc, err := connector.makePubSubConnection(metricEventKey)
 				if err != nil {
 					connector.logger.Errorf("Failed to reconnect to subscription: %v", err)
-					<-time.After(5 * time.Second)
+					<-time.After(receiveErrorSleepDuration)
 					continue
 				}
 				psc = newPsc
-				<-time.After(5 * time.Second)
+				<-time.After(receiveErrorSleepDuration)
 			default:
 				connector.logger.Errorf("Can not receive message of type '%T': %v", n, n)
-				<-time.After(5 * time.Second)
+				<-time.After(receiveErrorSleepDuration)
 			}
 		}
 	}()

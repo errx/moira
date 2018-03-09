@@ -28,13 +28,12 @@ func (connector *DbConnector) GetMetricsValues(metrics []string, from int64, unt
 	c := connector.pool.Get()
 	defer c.Close()
 
-	c.Send("MULTI")
 	for _, metric := range metrics {
 		c.Send("ZRANGEBYSCORE", metricDataKey(metric), from, until, "WITHSCORES")
 	}
-	resultByMetrics, err := redis.Values(c.Do("EXEC"))
+	resultByMetrics, err := redis.Values(c.Do(""))
 	if err != nil {
-		return nil, fmt.Errorf("Failed to EXEC: %v", err)
+		return nil, fmt.Errorf("Failed to get metric values: %v", err)
 	}
 
 	res := make(map[string][]*moira.MetricValue, len(resultByMetrics))
@@ -116,7 +115,7 @@ func (connector *DbConnector) SaveMetrics(metrics map[string]*moira.MatchedMetri
 
 // SubscribeMetricEvents creates subscription for new metrics and return channel for this events
 func (connector *DbConnector) SubscribeMetricEvents(tomb *tomb.Tomb) (<-chan *moira.MetricEvent, error) {
-	metricsChannel := make(chan *moira.MetricEvent, 100)
+	metricsChannel := make(chan *moira.MetricEvent, pubSubWorkerChannelSize)
 	dataChannel, err := connector.manageSubscriptions(tomb, metricEventKey)
 	if err != nil {
 		return nil, err

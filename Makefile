@@ -33,7 +33,7 @@ test: prepare
 .PHONY: build
 build: prepare
 	for service in "filter" "notifier" "api" "checker" "cli" ; do \
-		PKG_CONFIG_PATH="$(EXTRA_PKG_CONFIG_PATH)" go build -a -tags cairo -installsuffix cgo -ldflags "-X main.Version=${VERSION} -X main.GoVersion=${GO_VERSION} -X main.GitHash=${GIT_HASH}" -o build/$$service github.com/moira-alert/moira/cmd/$$service ; \
+		PKG_CONFIG_PATH="$(EXTRA_PKG_CONFIG_PATH)" go build -a -tags cairo -installsuffix cgo -ldflags "-X main.MoiraVersion=${VERSION} -X main.GoVersion=${GO_VERSION} -X main.GitCommit=${GIT_HASH}" -o build/$$service github.com/moira-alert/moira/cmd/$$service ; \
 	done
 
 .PHONY: build_nocairo
@@ -55,6 +55,10 @@ tar:
 		cp build/$$service build/root/$$service/usr/bin/moira-$$service ; \
 		cp pkg/$$service/moira-$$service.service build/root/$$service/usr/lib/systemd/system/moira-$$service.service ; \
 		cp pkg/$$service/$$service.yml build/root/$$service/etc/moira/$$service.yml ; \
+	done
+	for service in "filter" "notifier" "api" "checker" ; do \
+		mkdir -p build/root/$$service/usr/lib/systemd/system ; \
+		cp pkg/$$service/moira-$$service.service build/root/$$service/usr/lib/systemd/system/moira-$$service.service ; \
 	done
 	cp pkg/filter/storage-schemas.conf build/root/filter/etc/moira/storage-schemas.conf
 	for service in "filter" "notifier" "api" "checker" "cli" ; do \
@@ -131,7 +135,7 @@ packages: clean build tar rpm deb
 .PHONY: docker_image
 docker_image:
 	for service in "filter" "notifier" "api" "checker" ; do \
-		docker build -f Dockerfile.$$service -t moira/$$service:${VERSION} -t moira/$$service:latest . ; \
+		docker build --build-arg MoiraVersion=${VERSION} --build-arg GO_VERSION=${GO_VERSION} --build-arg GIT_COMMIT=${GIT_HASH} -f Dockerfile.$$service -t moira/$$service:${VERSION} -t moira/$$service:latest . ; \
 	done
 
 .PHONY: docker_push

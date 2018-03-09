@@ -5,7 +5,7 @@ COPY . /go/src/github.com/moira-alert/moira/
 RUN apk add --no-cache cairo cairo-dev git gcc musl-dev
 RUN go get github.com/kardianos/govendor
 RUN govendor sync
-RUN PKG_CONFIG_PATH="/usr/lib/pkgconfig" go build -tags cairo -a -installsuffix cgo -o build/api github.com/moira-alert/moira/cmd/api
+RUN PKG_CONFIG_PATH="/usr/lib/pkgconfig" go build -tags cairo -a -installsuffix cgo -ldflags "-X main.MoiraVersion=${MoiraVersion} -X main.GoVersion=${GO_VERSION} -X main.GitCommit=${GIT_COMMIT}" -o build/api github.com/moira-alert/moira/cmd/api
 
 
 FROM alpine

@@ -2,6 +2,9 @@ package controller
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+
 	"github.com/moira-alert/moira"
 	"github.com/moira-alert/moira/api"
 	"github.com/moira-alert/moira/api/dto"
@@ -54,7 +57,7 @@ func GetAllTagsAndSubscriptions(database moira.Database, logger moira.Logger) (*
 
 // GetAllTags gets all tag names
 func GetAllTags(database moira.Database) (*dto.TagsData, *api.ErrorResponse) {
-	tagsNames, err := database.GetTagNames()
+	tagsNames, err := getTagNamesSorted(database)
 	if err != nil {
 		return nil, api.ErrorInternalServer(err)
 	}
@@ -64,6 +67,15 @@ func GetAllTags(database moira.Database) (*dto.TagsData, *api.ErrorResponse) {
 	}
 
 	return tagsData, nil
+}
+
+func getTagNamesSorted(database moira.Database) ([]string, error) {
+	tagsNames, err := database.GetTagNames()
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(tagsNames, func(i, j int) bool { return strings.ToLower(tagsNames[i]) < strings.ToLower(tagsNames[j]) })
+	return tagsNames, nil
 }
 
 // RemoveTag deletes tag by name
