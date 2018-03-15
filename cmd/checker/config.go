@@ -3,9 +3,9 @@ package main
 import (
 	"runtime"
 
+	"github.com/gosexy/to"
 	"github.com/moira-alert/moira/checker"
 	"github.com/moira-alert/moira/cmd"
-	"github.com/gosexy/to"
 )
 
 type config struct {
@@ -17,11 +17,11 @@ type config struct {
 }
 
 type checkerConfig struct {
-	NoDataCheckInterval  string `yaml:"nodata_check_interval"`
-	CheckInterval        string `yaml:"check_interval"`
-	MetricsTTL           string `yaml:"metrics_ttl"`
-	StopCheckingInterval string `yaml:"stop_checking_interval"`
-	MaxParallelChecks    int    `yaml:"max_parallel_checks"`
+	NoDataCheckInterval  string `yaml:"nodata_check_interval"`  // Period for check all triggers for NODATA
+	CheckInterval        string `yaml:"check_interval"`         // Min period for re-check triggers. Reduce this duration may be increase CPU and memory usage
+	MetricsTTL           string `yaml:"metrics_ttl"`            // Time interval to store metrics. Increase of this value also increases redis memory consumption
+	StopCheckingInterval string `yaml:"stop_checking_interval"` // Если у вас перестали идти метрики, то вероятней всего все ваши триггеры упадут в NODATA. Это время указывает, сколько должно пройти времени после последней метрики, чтобы перестать чекать триггеры
+	MaxParallelChecks    int    `yaml:"max_parallel_checks"`    // Max concurrent checks of triggers, 0 - processor cores number.
 }
 
 func (config *checkerConfig) getSettings() *checker.Config {
@@ -45,7 +45,7 @@ func getDefault() config {
 		},
 		Logger: cmd.LoggerConfig{
 			LogFile:  "stdout",
-			LogLevel: "debug",
+			LogLevel: "info",
 		},
 		Checker: checkerConfig{
 			NoDataCheckInterval:  "60s",

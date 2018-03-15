@@ -13,9 +13,9 @@ type config struct {
 }
 
 type apiConfig struct {
-	Listen        string `yaml:"listen"`
-	EnableCORS    bool   `yaml:"enable_cors"`
-	WebConfigPath string `yaml:"web_config_path"`
+	Listen        string `yaml:"listen"`          // Listen announces on api local network address.
+	EnableCORS    bool   `yaml:"enable_cors"`     // Then true enable CORS for cross-domain requests. Use it only for local debug
+	WebConfigPath string `yaml:"web_config_path"` // Web_UI config file path. If file not found, api request "api/config" will return 404
 }
 
 func (config *apiConfig) getSettings() *api.Config {
@@ -33,7 +33,7 @@ func getDefault() config {
 		},
 		Logger: cmd.LoggerConfig{
 			LogFile:  "stdout",
-			LogLevel: "debug",
+			LogLevel: "info",
 		},
 		API: apiConfig{
 			Listen:        ":8081",

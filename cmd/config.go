@@ -13,12 +13,14 @@ import (
 )
 
 // RedisConfig is redis config structure, which are taken on the start of moira
+// For use Sentinel you need to use fields MasterName and SentinelAddrs
+// If one of this fields has no value, wait for Host and Port fields
 type RedisConfig struct {
-	MasterName    string `yaml:"master_name"`
-	SentinelAddrs string `yaml:"sentinel_addrs"`
-	Host          string `yaml:"host"`
-	Port          string `yaml:"port"`
-	DBID          int    `yaml:"dbid"`
+	MasterName    string `yaml:"master_name"`    // Redis Sentinel Cluster name
+	SentinelAddrs string `yaml:"sentinel_addrs"` // Redis sentinel address list, format: {host1_name:port};{ip:port}
+	Host          string `yaml:"host"`           // Redis node ip-address or host name
+	Port          string `yaml:"port"`           // Redis node port
+	DBID          int    `yaml:"dbid"`           // Redis database id
 }
 
 // GetSettings return redis config parsed from moira config files
@@ -34,10 +36,10 @@ func (config *RedisConfig) GetSettings() redis.Config {
 
 // GraphiteConfig is graphite metrics config, which are taken on the start of moira
 type GraphiteConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	URI      string `yaml:"uri"`
-	Prefix   string `yaml:"prefix"`
-	Interval string `yaml:"interval"`
+	Enabled  bool   `yaml:"enabled"`  // Then false disable graphite logging
+	URI      string `yaml:"uri"`      // Graphite relay URI, format: ip:port
+	Prefix   string `yaml:"prefix"`   // Moira metrics prefix, also you can use {hostname} substring that be resolved to moira host name
+	Interval string `yaml:"interval"` // Metrics send interval
 }
 
 // GetSettings return graphite metrics config parsed from moira config files
@@ -58,7 +60,7 @@ type LoggerConfig struct {
 
 // ProfilerConfig is pprof settings, which are taken on the start of moira
 type ProfilerConfig struct {
-	Listen string `yaml:"listen"`
+	Listen string `yaml:"listen"` //Then non empty and has valid uri, use pprof for default go profiling
 }
 
 // ReadConfig gets config file by given file and marshal it to moira-used type

@@ -13,8 +13,8 @@ type config struct {
 }
 
 type filterConfig struct {
-	Listen          string `yaml:"listen"`
-	RetentionConfig string `yaml:"retention-config"`
+	Listen          string `yaml:"listen"`           // Metrics listen uri
+	RetentionConfig string `yaml:"retention-config"` // Retentions config file path. Format of this file must be same as graphite retentions config file
 }
 
 func getDefault() config {
@@ -26,7 +26,7 @@ func getDefault() config {
 		},
 		Logger: cmd.LoggerConfig{
 			LogFile:  "stdout",
-			LogLevel: "debug",
+			LogLevel: "info",
 		},
 		Filter: filterConfig{
 			Listen:          ":2003",

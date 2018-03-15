@@ -20,21 +20,21 @@ type config struct {
 }
 
 type notifierConfig struct {
-	SenderTimeout    string              `yaml:"sender_timeout"`
-	ResendingTimeout string              `yaml:"resending_timeout"`
-	Senders          []map[string]string `yaml:"senders"`
-	SelfState        selfStateConfig     `yaml:"moira_selfstate"`
-	FrontURI         string              `yaml:"front_uri"`
-	Timezone         string              `yaml:"timezone"`
+	SenderTimeout    string              `yaml:"sender_timeout"`    // Send timeout duration, if notification is was not sent, try to resend it after 1 minute
+	ResendingTimeout string              `yaml:"resending_timeout"` // Interval that notifier will try to send notification. If it is always fail after this interval, notification will be skipped
+	Senders          []map[string]string `yaml:"senders"`           // Senders configuration
+	SelfState        selfStateConfig     `yaml:"moira_selfstate"`   // Self state monitor you all moira microservices and notify about problems with it
+	FrontURI         string              `yaml:"front_uri"`         // Web-UI uri for generate trigger links in notifications
+	Timezone         string              `yaml:"timezone"`          // Set up timezone for convert ticks, UTC by default. For more information about how moira loads location info see https://golang.org/pkg/time/#LoadLocation
 }
 
 type selfStateConfig struct {
 	Enabled                 bool                `yaml:"enabled"`
-	RedisDisconnectDelay    string              `yaml:"redis_disconect_delay"`
-	LastMetricReceivedDelay string              `yaml:"last_metric_received_delay"`
-	LastCheckDelay          string              `yaml:"last_check_delay"`
-	Contacts                []map[string]string `yaml:"contacts"`
-	NoticeInterval          string              `yaml:"notice_interval"`
+	RedisDisconnectDelay    string              `yaml:"redis_disconect_delay"`      // Interval for redis disconnect after which notifier sends an alert
+	LastMetricReceivedDelay string              `yaml:"last_metric_received_delay"` // Interval for no metrics after which notifier sends an alert
+	LastCheckDelay          string              `yaml:"last_check_delay"`           // Interval for not trigger checks after which notifier sends an alert
+	Contacts                []map[string]string `yaml:"contacts"`                   // Contact list for notifier alerts
+	NoticeInterval          string              `yaml:"notice_interval"`            // Moira problems notification interval
 }
 
 func getDefault() config {
@@ -51,11 +51,11 @@ func getDefault() config {
 		},
 		Logger: cmd.LoggerConfig{
 			LogFile:  "stdout",
-			LogLevel: "debug",
+			LogLevel: "info",
 		},
 		Notifier: notifierConfig{
 			SenderTimeout:    "10s",
-			ResendingTimeout: "24:00",
+			ResendingTimeout: "1:00",
 			SelfState: selfStateConfig{
 				Enabled:                 false,
 				RedisDisconnectDelay:    "30s",
