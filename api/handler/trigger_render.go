@@ -11,6 +11,7 @@ import (
 	"github.com/moira-alert/moira/api"
 	"github.com/moira-alert/moira/api/controller"
 	"github.com/moira-alert/moira/api/middleware"
+	"github.com/moira-alert/moira"
 )
 
 type metricFormat int
@@ -22,18 +23,27 @@ const (
 	JSON
 )
 
+var (
+	increasingThresholdLines = []string{
+		"alpha(areaBetween(lineWidth(group(threshold(50, color='yellow'),threshold(75, color='yellow')),2)),0.2)",
+		"alpha(areaBetween(lineWidth(group(threshold(75, color='red'),threshold(1000000, color='red')),2)),0.2)"}
+	decreasingThresholdLines = []string{
+		"alpha(lineWidth(threshold(30, color='red'),2),0.2)",
+		"alpha(lineWidth(threshold(50, color='yellow'),2),0.2)"}
+)
+
 func renderTrigger(writer http.ResponseWriter, request *http.Request) {
 	triggerID := middleware.GetTriggerID(request)
-	fromStr := middleware.GetFromStr(request)
-	toStr := middleware.GetToStr(request)
-	from := date.DateParamToEpoch(fromStr, "UTC", 0, time.UTC)
+	rawFrom := middleware.GetFromStr(request)
+	rawTo := middleware.GetToStr(request)
+	from := date.DateParamToEpoch(rawFrom, "UTC", 0, time.UTC)
 	if from == 0 {
-		render.Render(writer, request, api.ErrorInvalidRequest(fmt.Errorf("can not parse from: %s", fromStr)))
+		render.Render(writer, request, api.ErrorInvalidRequest(fmt.Errorf("can not parse from: %s", rawFrom)))
 		return
 	}
-	to := date.DateParamToEpoch(toStr, "UTC", 0, time.UTC)
+	to := date.DateParamToEpoch(rawTo, "UTC", 0, time.UTC)
 	if to == 0 {
-		render.Render(writer, request, api.ErrorInvalidRequest(fmt.Errorf("can not parse to: %v", toStr)))
+		render.Render(writer, request, api.ErrorInvalidRequest(fmt.Errorf("can not parse to: %v", rawTo)))
 		return
 	}
 	format, err := getMetricFormat(request)
@@ -97,5 +107,30 @@ func getPictureParams() expr.PictureParams {
 	params.BgColor = "1f1d1d"
 	params.MinorGridLineColor = "1f1d1d"
 	params.MajorGridLineColor = "grey"
+	params.AreaAlpha = 0.2
+	params.AreaMode = expr.AreaModeAll
 	return params
 }
+
+// func computeThreshold(trigger *moira.Trigger, startTime int32, stopTime int32) ([][]*expr.MetricData, error) {
+// 	var thresholdLines []string
+//
+// 	metricsMap := make(map[expr.MetricRequest][]*expr.MetricData)
+// 	thresholdSeries := make([][]*expr.MetricData, 2)
+
+// 	if *trigger.WarnValue > *trigger.ErrorValue {
+// 		thresholdLines = decreasingThresholdLines
+// 	} else {
+// 		thresholdLines = increasingThresholdLines
+// 	}
+
+// 	for _, thresholdLine := range thresholdLines {
+// 		threshold, _, _ := expr.ParseExpr(thresholdLine)
+// 		thresholdSerie, err := expr.EvalExpr(threshold, startTime, stopTime, metricsMap)
+// 		if err != nil{
+// 			return nil, fmt.Errorf("can't evaluate thresholds for trigger %s: %s", trigger.ID, err.Error())
+// 		}
+// 		thresholdSeries = append(thresholdSeries, thresholdSerie)
+// 	}
+// 	return thresholdSeries, nil
+// }
