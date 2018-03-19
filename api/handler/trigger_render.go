@@ -62,24 +62,23 @@ func renderTrigger(writer http.ResponseWriter, request *http.Request) {
 		metricsData = append(metricsData, &ts.MetricData)
 	}
 
-	startTime := metricsData[0].StartTime
-	stopTime := metricsData[0].StopTime
-
-	thresholdData, err := computeThreshold(trigger, startTime, stopTime)
-	if err != nil {
-		render.Render(writer, request, api.ErrorRender(err))
-	} else {
-		for _, th := range thresholdData {
-			metricsData = append(metricsData, th...)
-		}
-	}
-
 	switch format {
 	case JSON:
 		json := expr.MarshalJSON(metricsData)
 		writer.Header().Set("Content-Type", "application/json")
 		writer.Write(json)
 	case PNG:
+		startTime := metricsData[0].StartTime
+		stopTime := metricsData[0].StopTime
+
+		thresholdData, err := computeThreshold(trigger, startTime, stopTime)
+		if err != nil {
+			render.Render(writer, request, api.ErrorRender(err))
+		} else {
+			for _, th := range thresholdData {
+				metricsData = append(metricsData, th...)
+			}
+		}
 		params := getPictureParams()
 		params.Title = trigger.Name
 		png := expr.MarshalPNG(params, metricsData)
