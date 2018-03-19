@@ -12,6 +12,7 @@ import (
 	"github.com/moira-alert/moira/api"
 	"github.com/moira-alert/moira/api/controller"
 	"github.com/moira-alert/moira/api/middleware"
+	"github.com/moira-alert/moira/checker"
 )
 
 type metricFormat int
@@ -24,12 +25,14 @@ const (
 )
 
 var (
-	valueRaisingThresholdLines = []string{
-		"alpha(areaBetween(lineWidth(group(threshold(50, color='yellow'),threshold(75, color='yellow')),2)),0.2)",
-		"alpha(areaBetween(lineWidth(group(threshold(75, color='red'),threshold(1000000, color='red')),2)),0.2)"}
-	valueFailingThresholdLines = []string{
-		"alpha(lineWidth(threshold(30, color='red'),2),0.2)",
-		"alpha(lineWidth(threshold(50, color='yellow'),2),0.2)"}
+	valueRaisingThresholdTemplate = []string{
+		"alpha(areaBetween(lineWidth(group(threshold(%.f, color='red'),threshold(%.f, color='red')),2)),0.2)",
+		"alpha(areaBetween(lineWidth(group(threshold(%.f, color='yellow'),threshold(%.f, color='yellow')),2)),0.2)",
+		}
+	valueFallingThresholdTemplate = []string{
+		"alpha(lineWidth(threshold(%.f, color='red'),2),0.2)",
+		"alpha(lineWidth(threshold(%.f, color='yellow'),2),0.2)",
+		}
 )
 
 func renderTrigger(writer http.ResponseWriter, request *http.Request) {
@@ -68,16 +71,13 @@ func renderTrigger(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		writer.Write(json)
 	case PNG:
-		startTime := metricsData[0].StartTime
-		stopTime := metricsData[0].StopTime
-
-		thresholdData, err := computeThreshold(trigger, startTime, stopTime)
+		thresholdData, err := getThresholdData(trigger, tts)
 		if err != nil {
 			render.Render(writer, request, api.ErrorRender(err))
-		} else {
-			for _, th := range thresholdData {
-				metricsData = append(metricsData, th...)
-			}
+			return
+		}
+		for _, th := range thresholdData {
+			metricsData = append(metricsData, th...)
 		}
 		params := getPictureParams()
 		params.Title = trigger.Name
@@ -123,24 +123,54 @@ func getPictureParams() expr.PictureParams {
 	return params
 }
 
-func computeThreshold(trigger *moira.Trigger, startTime int32, stopTime int32) ([][]*expr.MetricData, error) {
-	var thresholdLines []string
+func getThresholdData(trigger *moira.Trigger, timeSeries *checker.TriggerTimeSeries) ([][]*expr.MetricData, error) {
 	metricsMap := make(map[expr.MetricRequest][]*expr.MetricData)
-	thresholdSeries := make([][]*expr.MetricData, 2)
+	thresholdSeriesList := make([][]*expr.MetricData, 2)
 
-	if *trigger.WarnValue > *trigger.ErrorValue {
-		thresholdLines = valueFailingThresholdLines
-	} else {
-		thresholdLines = valueRaisingThresholdLines
-	}
+	startTime := timeSeries.Main[0].StartTime
+	stopTime := timeSeries.Main[0].StopTime
+	limitValue := getLimitValue(timeSeries)
+	thresholdExpressions := getThresholdExpressions(*trigger.WarnValue, *trigger.ErrorValue, limitValue)
 
-	for _, thresholdLine := range thresholdLines {
-		threshold, _, _ := expr.ParseExpr(thresholdLine)
-		thresholdSerie, err := expr.EvalExpr(threshold, startTime, stopTime, metricsMap)
+	for _, thresholdExpression := range thresholdExpressions {
+		parsedThreshold, _, _ := expr.ParseExpr(thresholdExpression)
+		thresholdSeries, err := expr.EvalExpr(parsedThreshold, startTime, stopTime, metricsMap)
 		if err != nil {
 			return nil, fmt.Errorf("can't evaluate thresholds for trigger %s: %s", trigger.ID, err.Error())
 		}
-		thresholdSeries = append(thresholdSeries, thresholdSerie)
+		thresholdSeriesList = append(thresholdSeriesList, thresholdSeries)
 	}
-	return thresholdSeries, nil
+	return thresholdSeriesList, nil
+}
+
+func getThresholdExpressions(warnValue float64, errorValue float64, limitValue float64) []string {
+	var thresholdTemplate []string
+	switch {
+	case warnValue < errorValue:
+		thresholdTemplate = valueRaisingThresholdTemplate
+		return []string{
+			fmt.Sprintf(thresholdTemplate[0], errorValue, limitValue),
+			fmt.Sprintf(thresholdTemplate[1], warnValue, errorValue),
+		}
+	default:
+		thresholdTemplate = valueFallingThresholdTemplate
+		return []string{
+			fmt.Sprintf(thresholdTemplate[0], errorValue),
+			fmt.Sprintf(thresholdTemplate[1], warnValue),
+		}
+	}
+}
+
+func getLimitValue(timeSeries *checker.TriggerTimeSeries) float64 {
+	var metricsData *expr.MetricData
+	var LimitValue float64
+	for _, ts := range timeSeries.Main{
+		metricsData = &ts.MetricData
+		for _, val := range metricsData.Values{
+			if val > LimitValue{
+				LimitValue = val
+			}
+		}
+	}
+	return LimitValue
 }
