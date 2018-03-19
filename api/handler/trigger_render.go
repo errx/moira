@@ -66,10 +66,11 @@ func renderTrigger(writer http.ResponseWriter, request *http.Request) {
 	stopTime := metricsData[0].StopTime
 
 	thresholdData, err := computeThreshold(trigger, startTime, stopTime)
-
-	for _, th := range thresholdData {
-		for _, t := range th {
-			metricsData = append(metricsData, t)
+	if err != nil {
+		render.Render(writer, request, api.ErrorRender(err))
+	} else {
+		for _, th := range thresholdData {
+			metricsData = append(metricsData, th...)
 		}
 	}
 
