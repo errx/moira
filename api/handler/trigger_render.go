@@ -8,10 +8,10 @@ import (
 	"github.com/go-chi/render"
 	"github.com/go-graphite/carbonapi/date"
 	"github.com/go-graphite/carbonapi/expr"
+	"github.com/moira-alert/moira"
 	"github.com/moira-alert/moira/api"
 	"github.com/moira-alert/moira/api/controller"
 	"github.com/moira-alert/moira/api/middleware"
-	"github.com/moira-alert/moira"
 )
 
 type metricFormat int
@@ -24,10 +24,10 @@ const (
 )
 
 var (
-	increasingThresholdLines = []string{
+	valueRaisingThresholdLines = []string{
 		"alpha(areaBetween(lineWidth(group(threshold(50, color='yellow'),threshold(75, color='yellow')),2)),0.2)",
 		"alpha(areaBetween(lineWidth(group(threshold(75, color='red'),threshold(1000000, color='red')),2)),0.2)"}
-	decreasingThresholdLines = []string{
+	valueFailingThresholdLines = []string{
 		"alpha(lineWidth(threshold(30, color='red'),2),0.2)",
 		"alpha(lineWidth(threshold(50, color='yellow'),2),0.2)"}
 )
@@ -60,6 +60,17 @@ func renderTrigger(writer http.ResponseWriter, request *http.Request) {
 	var metricsData = make([]*expr.MetricData, 0, len(tts.Main)+len(tts.Additional))
 	for _, ts := range tts.Main {
 		metricsData = append(metricsData, &ts.MetricData)
+	}
+
+	startTime := metricsData[0].StartTime
+	stopTime := metricsData[0].StopTime
+
+	thresholdData, err := computeThreshold(trigger, startTime, stopTime)
+
+	for _, th := range thresholdData {
+		for _, t := range th {
+			metricsData = append(metricsData, t)
+		}
 	}
 
 	switch format {
@@ -112,25 +123,24 @@ func getPictureParams() expr.PictureParams {
 	return params
 }
 
-// func computeThreshold(trigger *moira.Trigger, startTime int32, stopTime int32) ([][]*expr.MetricData, error) {
-// 	var thresholdLines []string
-//
-// 	metricsMap := make(map[expr.MetricRequest][]*expr.MetricData)
-// 	thresholdSeries := make([][]*expr.MetricData, 2)
+func computeThreshold(trigger *moira.Trigger, startTime int32, stopTime int32) ([][]*expr.MetricData, error) {
+	var thresholdLines []string
+	metricsMap := make(map[expr.MetricRequest][]*expr.MetricData)
+	thresholdSeries := make([][]*expr.MetricData, 2)
 
-// 	if *trigger.WarnValue > *trigger.ErrorValue {
-// 		thresholdLines = decreasingThresholdLines
-// 	} else {
-// 		thresholdLines = increasingThresholdLines
-// 	}
+	if *trigger.WarnValue > *trigger.ErrorValue {
+		thresholdLines = valueFailingThresholdLines
+	} else {
+		thresholdLines = valueRaisingThresholdLines
+	}
 
-// 	for _, thresholdLine := range thresholdLines {
-// 		threshold, _, _ := expr.ParseExpr(thresholdLine)
-// 		thresholdSerie, err := expr.EvalExpr(threshold, startTime, stopTime, metricsMap)
-// 		if err != nil{
-// 			return nil, fmt.Errorf("can't evaluate thresholds for trigger %s: %s", trigger.ID, err.Error())
-// 		}
-// 		thresholdSeries = append(thresholdSeries, thresholdSerie)
-// 	}
-// 	return thresholdSeries, nil
-// }
+	for _, thresholdLine := range thresholdLines {
+		threshold, _, _ := expr.ParseExpr(thresholdLine)
+		thresholdSerie, err := expr.EvalExpr(threshold, startTime, stopTime, metricsMap)
+		if err != nil {
+			return nil, fmt.Errorf("can't evaluate thresholds for trigger %s: %s", trigger.ID, err.Error())
+		}
+		thresholdSeries = append(thresholdSeries, thresholdSerie)
+	}
+	return thresholdSeries, nil
+}
