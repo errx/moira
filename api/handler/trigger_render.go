@@ -118,7 +118,8 @@ func getPictureParams() expr.PictureParams {
 	params.BgColor = "1f1d1d"
 	params.MinorGridLineColor = "1f1d1d"
 	params.MajorGridLineColor = "grey"
-	params.AreaAlpha = 0.2
+	params.AreaAlpha = 0.1
+	params.LineWidth = 1
 	params.AreaMode = expr.AreaModeAll
 	params.ColorList = []string{
 		"#7eb26d", "#eab839", "#6ed0e0", "#ef843c", "#e24d42", "#1f78c1", "#ba43a9", "#705da0", "#508642", "#cca300", "#447ebc",
