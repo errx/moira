@@ -28,11 +28,11 @@ var (
 	valueRaisingThresholdTemplate = []string{
 		"alpha(areaBetween(lineWidth(group(threshold(%.f, color='red'),threshold(%.f, color='red')),2)),0.2)",
 		"alpha(areaBetween(lineWidth(group(threshold(%.f, color='yellow'),threshold(%.f, color='yellow')),2)),0.2)",
-		}
+	}
 	valueFallingThresholdTemplate = []string{
 		"alpha(lineWidth(threshold(%.f, color='red'),2),0.2)",
 		"alpha(lineWidth(threshold(%.f, color='yellow'),2),0.2)",
-		}
+	}
 )
 
 func renderTrigger(writer http.ResponseWriter, request *http.Request) {
@@ -120,6 +120,9 @@ func getPictureParams() expr.PictureParams {
 	params.MajorGridLineColor = "grey"
 	params.AreaAlpha = 0.2
 	params.AreaMode = expr.AreaModeAll
+	params.ColorList = []string{
+		"#7eb26d", "#eab839", "#6ed0e0", "#ef843c", "#e24d42", "#1f78c1", "#ba43a9", "#705da0", "#508642", "#cca300", "#447ebc",
+	}
 	return params
 }
 
@@ -164,10 +167,10 @@ func getThresholdExpressions(warnValue float64, errorValue float64, limitValue f
 func getLimitValue(timeSeries *checker.TriggerTimeSeries) float64 {
 	var metricsData *expr.MetricData
 	var LimitValue float64
-	for _, ts := range timeSeries.Main{
+	for _, ts := range timeSeries.Main {
 		metricsData = &ts.MetricData
-		for _, val := range metricsData.Values{
-			if val > LimitValue{
+		for _, val := range metricsData.Values {
+			if val > LimitValue {
 				LimitValue = val
 			}
 		}
